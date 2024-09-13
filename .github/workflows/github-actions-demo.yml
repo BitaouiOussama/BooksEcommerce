@@ -1,0 +1,22 @@
+name: CI Pipeline
+
+# Trigger the pipeline on push for every branch
+on:
+  push:
+    branches:
+      - '**'  # Trigger on all branches
+
+jobs:
+  build:
+    runs-on: [self-hosted, test]  # Your self-hosted runner
+
+    steps:
+      # Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      # Print the branch name
+      - name: Get branch name
+        run: echo "Branch name:${{github.ref}}"
+
+          
