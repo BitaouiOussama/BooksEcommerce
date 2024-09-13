@@ -22,7 +22,7 @@ jobs:
       # Trigger Jenkins job with branch name as parameter, skipping SSL verification
       - name: Trigger Jenkins Job
         run: |
-          curl -k -X POST "https://jenkins.marjane.ma/job/template1/job/Qualite/buildWithParameters" \
+          curl -X POST "http://192.168.98.75:8080/job/template1/job/Qualite/buildWithParameters" \
                --user ${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }} \
                --data-urlencode "BRANCH_NAME=${{ env.BRANCH_NAME }}"
           
