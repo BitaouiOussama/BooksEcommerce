@@ -11,12 +11,12 @@ jobs:
     runs-on: self-hosted  # Your self-hosted runner
 
     steps:
-      # Check out the repository code
-      - name: Checkout code
-        uses: actions/checkout@v2
 
       # Print the branch name
-      - name: Get branch name
-        run: echo "Branch name:${{github.ref}}"
+      - name: Set branch name environment variable
+        run: |
+          BRANCH_NAME=$(echo "${{ github.ref }}" | sed 's|refs/heads/||')
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+          echo "Branch name stored: $BRANCH_NAME"
 
           
