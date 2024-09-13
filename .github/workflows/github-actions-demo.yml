@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: [self-hosted]  # Your self-hosted runner
+    runs-on: [lunix]  # Your self-hosted runner
 
     steps:
       # Check out the repository code
