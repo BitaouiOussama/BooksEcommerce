@@ -19,11 +19,10 @@ jobs:
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
           echo "Branch name stored: $BRANCH_NAME"
 
-      # Trigger Jenkins job with branch name as parameter
+      # Trigger Jenkins job with branch name as parameter, skipping SSL verification
       - name: Trigger Jenkins Job
         run: |
-          curl -X POST "https://jenkins.marjane.ma/job/template1/job/Qualite/buildWithParameters" \
-               --user jenkuser:11731f1c43a8bf67ed718416d9552b2a9d \
+          curl -k -X POST "https://jenkins.marjane.ma/job/template1/job/Qualite/buildWithParameters" \
+               --user ${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }} \
                --data-urlencode "BRANCH_NAME=${{ env.BRANCH_NAME }}"
-
           
