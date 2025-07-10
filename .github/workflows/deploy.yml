@@ -1,4 +1,4 @@
-name: Manual Deploy from PR Description
+name: Build and Deploy on PR to Master
 
 on:
   pull_request:
@@ -6,14 +6,14 @@ on:
       - master
 
 jobs:
-  manual-deploy:
-    runs-on: [self-hosted, Linux, X64]
+  build-and-deploy:
+    runs-on: self-hosted
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up .NET 6 SDK
+      - name: Setup .NET SDK
         run: |
           export DOTNET_ROOT=$HOME/dotnet
           export PATH=$DOTNET_ROOT:$PATH
@@ -22,53 +22,53 @@ jobs:
           tar -zxf dotnet-sdk.tar.gz -C "$DOTNET_ROOT"
           dotnet --version
 
-      - name: Extract project to deploy from PR body
-        id: extract_project
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: |
-          echo "PR body: $PR_BODY"
-          PROJECT=$(echo "$PR_BODY" | grep -i '^/deploy ' | awk '{print $2}' | xargs)
-          echo "project=$PROJECT" >> $GITHUB_OUTPUT
-
-      - name: Read deployment paths
-        id: read_config
+      - name: Read deployment config
+        id: read-config
         run: |
           echo "Reading deployment config..."
-          DEPLOYMENTS=$(yq '.deployments' .deploy-config.yml | yq 'keys | .[]')
-          echo "available=$DEPLOYMENTS" >> $GITHUB_OUTPUT
+          DEPLOYMENTS=$(yq '.deployments' .deploy-config.yml | yq 'keys | join(",")')
+          echo "available=$DEPLOYMENTS" >> "$GITHUB_OUTPUT"
 
-      - name: Build and Deploy selected project
+      - name: Extract chosen project from PR body
+        id: pr-content
         run: |
-          #!/bin/bash
-          set -e
+          BODY="${{ github.event.pull_request.body }}"
+          echo "PR Body: $BODY"
+          CHOSEN_PROJECT=$(echo "$BODY" | grep -oP '(?<=project:\s*)\S+')
+          echo "chosen=$CHOSEN_PROJECT" >> "$GITHUB_OUTPUT"
 
-          export DOTNET_ROOT=$HOME/dotnet
-          export PATH=$DOTNET_ROOT:$PATH
+      - name: Validate project choice
+        run: |
+          echo "Validating project: ${{ steps.pr-content.outputs.chosen }}"
+          VALID=false
+          for proj in $(echo "${{ steps.read-config.outputs.available }}" | tr ',' '\n'); do
+            if [[ "$proj" == "${{ steps.pr-content.outputs.chosen }}" ]]; then
+              VALID=true
+              break
+            fi
+          done
 
-          PROJECT_NAME="${{ steps.extract_project.outputs.project }}"
-          echo "Requested project to deploy: $PROJECT_NAME"
-
-          if [ -z "$PROJECT_NAME" ]; then
-            echo "❌ No /deploy <project> line found in PR description."
+          if [[ "$VALID" == false ]]; then
+            echo "❌ Invalid project: '${{ steps.pr-content.outputs.chosen }}'"
+            echo "Available projects: ${{ steps.read-config.outputs.available }}"
             exit 1
           fi
 
-          DEPLOY_PATH=$(yq ".deployments.\"$PROJECT_NAME\".path" .deploy-config.yml)
-          if [ "$DEPLOY_PATH" == "null" ]; then
-            echo "❌ Project $PROJECT_NAME not found in .deploy-config.yml"
-            exit 1
-          fi
+      - name: Build and deploy project
+        run: |
+          PROJECT="${{ steps.pr-content.outputs.chosen }}"
+          echo "Building and deploying project: $PROJECT"
 
-          csproj_path=$(find "$PROJECT_NAME" -name '*.csproj' | head -n 1)
-          if [ -z "$csproj_path" ]; then
-            echo "❌ No .csproj found in $PROJECT_NAME"
-            exit 1
-          fi
+          # Lire le chemin du projet depuis le fichier yml
+          PROJECT_PATH=$(yq ".deployments.\"$PROJECT\".path" .deploy-config.yml)
+          echo "Resolved path: $PROJECT_PATH"
 
-          echo "▶️ Building $csproj_path..."
-          dotnet publish "$csproj_path" -c Release -o out
+          # Crée le dossier s’il n’existe pas (optionnel)
+          mkdir -p "$PROJECT_PATH"
 
-          echo "🚀 Deploying to $DEPLOY_PATH"
-          mkdir -p "$DEPLOY_PATH"
-          cp -r "$PROJECT_NAME/out/"* "$DEPLOY_PATH"
+          # Build
+          dotnet build "$PROJECT"
+
+          # Simuler le "déploiement" en copiant vers le dossier Windows (via WSL mount)
+          echo "Deploying to: $PROJECT_PATH"
+          cp -r "$PROJECT"/* "$PROJECT_PATH"/
