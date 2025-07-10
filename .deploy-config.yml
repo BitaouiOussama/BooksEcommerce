@@ -1,0 +1,9 @@
+deployments:
+  BookEcommerce.Web:
+    path: C:/MigrationGithubActions/BookEcommerce.Web
+
+  BooksEcommerce.Services.ProductAPI:
+    path: C:/MigrationGithubActions/ProductAPI
+
+  BooksEcommerce.Services.UserAPI:
+    path: C:/MigrationGithubActions/UserAPI
