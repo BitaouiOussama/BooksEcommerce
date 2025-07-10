@@ -1,3 +1,53 @@
+# name: Build and Deploy .NET Project from PR description
+
+# on:
+#   pull_request:
+#     branches:
+#       - master
+
+# jobs:
+#   build-deploy:
+#     runs-on: [self-hosted, Linux, X64]
+
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v3
+
+#       - name: Extract project name from PR body
+#         id: extract_project
+#         run: |
+#           echo "PR body:"
+#           echo "${{ github.event.pull_request.body }}"
+
+#           PROJECT_LINE=$(echo "${{ github.event.pull_request.body }}" | grep -i '^project:' || echo "")
+#           PROJECT=$(echo "$PROJECT_LINE" | awk -F ':' '{print $2}' | xargs)
+
+#           if [ -z "$PROJECT" ]; then
+#             echo "No project specified in PR body. Using default: BookEcommerce.Web"
+#             PROJECT="BookEcommerce.Web"
+#           fi
+
+#           echo "Extracted project: $PROJECT"
+#           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+#         shell: bash
+
+#       - name: Build and deploy chosen project
+#         env:
+#           DOTNET_ROOT: /home/obitaoui/dotnet
+#           PROJECT: ${{ steps.extract_project.outputs.project }}
+#         run: |
+#           export PATH=/home/obitaoui/dotnet:$PATH
+
+#           echo "Building project: $PROJECT"
+#           dotnet build "$PROJECT" || exit 1
+
+#           DEPLOY_PATH="/mnt/c/MigrationGithubActions/$PROJECT"
+#           echo "Deploying to $DEPLOY_PATH"
+#           mkdir -p "$DEPLOY_PATH"
+#           cp -r "$PROJECT"/* "$DEPLOY_PATH"/
+#         shell: bash
+
+
 name: Build and Deploy .NET Project from PR description
 
 on:
@@ -31,17 +81,37 @@ jobs:
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
         shell: bash
 
+      - name: Install yq
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+          sudo chmod +x /usr/bin/yq
+
+      - name: Get deployment path from deployments.yml
+        id: get_deploy_path
+        run: |
+          PROJECT="${{ steps.extract_project.outputs.project }}"
+          DEPLOY_PATH=$(yq e ".deployments.\"$PROJECT\".path" deployments.yml)
+
+          if [ "$DEPLOY_PATH" == "null" ] || [ -z "$DEPLOY_PATH" ]; then
+            echo "❌ ERROR: Project $PROJECT not found in deployments.yml"
+            exit 1
+          fi
+
+          echo "Deployment path for $PROJECT: $DEPLOY_PATH"
+          echo "deploy_path=$DEPLOY_PATH" >> "$GITHUB_OUTPUT"
+        shell: bash
+
       - name: Build and deploy chosen project
         env:
           DOTNET_ROOT: /home/obitaoui/dotnet
           PROJECT: ${{ steps.extract_project.outputs.project }}
+          DEPLOY_PATH: ${{ steps.get_deploy_path.outputs.deploy_path }}
         run: |
           export PATH=/home/obitaoui/dotnet:$PATH
 
           echo "Building project: $PROJECT"
           dotnet build "$PROJECT" || exit 1
 
-          DEPLOY_PATH="/mnt/c/MigrationGithubActions/$PROJECT"
           echo "Deploying to $DEPLOY_PATH"
           mkdir -p "$DEPLOY_PATH"
           cp -r "$PROJECT"/* "$DEPLOY_PATH"/
