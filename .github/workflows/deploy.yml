@@ -1,0 +1,63 @@
+name: Build & Deploy
+
+on:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  selective-deploy:
+    runs-on: [self-hosted, Linux, X64]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install yq (YAML parser)
+      run: sudo snap install yq
+
+    - name: Get list of modified folders
+      id: changes
+      run: |
+        echo "changed_projects=" >> $GITHUB_ENV
+
+        # Get list of modified top-level folders (projects)
+        MODIFIED=$(git diff --name-only origin/master...HEAD | cut -d/ -f1-2 | sort -u)
+
+        echo "Modified paths:"
+        echo "$MODIFIED"
+
+        echo "changed_projects<<EOF" >> $GITHUB_ENV
+        echo "$MODIFIED" >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
+
+    - name: Build & Deploy only changed projects
+      run: |
+        CONFIG=".deploy-config.yml"
+        echo "Chargement de la configuration de déploiement..."
+
+        for PROJECT in $(yq e '.deployments | keys | .[]' $CONFIG); do
+          echo "Vérification du projet : $PROJECT"
+          
+          if echo "$changed_projects" | grep -q "$PROJECT"; then
+            echo "Projet modifié : $PROJECT"
+
+            CSPROJ=$(find "$PROJECT" -maxdepth 1 -name '*.csproj' | head -n 1)
+            if [ -z "$CSPROJ" ]; then
+              echo "Aucun .csproj trouvé dans $PROJECT"
+              exit 1
+            fi
+
+            echo "Build de $CSPROJ..."
+            dotnet build "$CSPROJ" -c Release
+
+            TARGET_PATH=$(yq e ".deployments.\"$PROJECT\".path" $CONFIG)
+            mkdir -p "$TARGET_PATH"
+
+            echo "Déploiement vers $TARGET_PATH..."
+            cp -r "$PROJECT/bin/Release/net6.0/"* "$TARGET_PATH"
+
+            echo "$PROJECT déployé avec succès à $TARGET_PATH"
+          else
+            echo "⏭Aucun changement détecté pour $PROJECT"
+          fi
+        done
