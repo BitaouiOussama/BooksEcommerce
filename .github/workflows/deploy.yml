@@ -1,4 +1,4 @@
-name: Build and Deploy Modified Projects
+name: Manual Deploy from PR Description
 
 on:
   pull_request:
@@ -6,42 +6,39 @@ on:
       - master
 
 jobs:
-  build-and-deploy:
-    runs-on: self-hosted
+  manual-deploy:
+    runs-on: [self-hosted, Linux, X64]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Fetch master branch for comparison
-        run: |
-          git fetch origin master
 
       - name: Set up .NET 6 SDK
         run: |
           export DOTNET_ROOT=$HOME/dotnet
           export PATH=$DOTNET_ROOT:$PATH
           mkdir -p "$DOTNET_ROOT"
-          wget https://download.visualstudio.microsoft.com/download/pr/e99cfe85-0e65-4c9b-b570-325764bde840/f2f02b720949c1f289443d2dcd15a7d0/dotnet-sdk-6.0.428-linux-x64.tar.gz -O dotnet-sdk.tar.gz
+          wget https://dotnetcli.azureedge.net/dotnet/Sdk/6.0.428/dotnet-sdk-6.0.428-linux-x64.tar.gz -O dotnet-sdk.tar.gz
           tar -zxf dotnet-sdk.tar.gz -C "$DOTNET_ROOT"
           dotnet --version
 
+      - name: Extract project to deploy from PR body
+        id: extract_project
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "PR body: $PR_BODY"
+          PROJECT=$(echo "$PR_BODY" | grep -i '^/deploy ' | awk '{print $2}' | xargs)
+          echo "project=$PROJECT" >> $GITHUB_OUTPUT
+
       - name: Read deployment paths
-        id: read-config
+        id: read_config
         run: |
           echo "Reading deployment config..."
           DEPLOYMENTS=$(yq '.deployments' .deploy-config.yml | yq 'keys | .[]')
-          echo "projects=$DEPLOYMENTS" >> $GITHUB_OUTPUT
+          echo "available=$DEPLOYMENTS" >> $GITHUB_OUTPUT
 
-      - name: Get list of modified projects
-        id: get-modified
-        run: |
-          echo "Detecting modified folders..."
-          MODIFIED=$(git diff --name-only origin/master...HEAD | cut -d/ -f1-2 | sort -u)
-          echo "MODIFIED=$MODIFIED"
-          echo "changed_projects=$MODIFIED" >> $GITHUB_OUTPUT
-
-      - name: Build and Deploy Modified Projects
+      - name: Build and Deploy selected project
         run: |
           #!/bin/bash
           set -e
@@ -49,29 +46,29 @@ jobs:
           export DOTNET_ROOT=$HOME/dotnet
           export PATH=$DOTNET_ROOT:$PATH
 
-          echo "Parsing config file..."
-          declare -A deployment_paths
-          while IFS=":" read -r project path; do
-            project=$(echo $project | xargs)
-            path=$(echo $path | xargs)
-            deployment_paths["$project"]="$path"
-          done < <(yq -o t '.' .deploy-config.yml | grep path)
+          PROJECT_NAME="${{ steps.extract_project.outputs.project }}"
+          echo "Requested project to deploy: $PROJECT_NAME"
 
-          echo "Modified folders: ${{ steps.get-modified.outputs.changed_projects }}"
+          if [ -z "$PROJECT_NAME" ]; then
+            echo "❌ No /deploy <project> line found in PR description."
+            exit 1
+          fi
 
-          for project_path in ${{ steps.get-modified.outputs.changed_projects }}; do
-            project_name=$(basename "$project_path")
-            csproj_path=$(find "$project_path" -name '*.csproj' | head -n 1)
+          DEPLOY_PATH=$(yq ".deployments.\"$PROJECT_NAME\".path" .deploy-config.yml)
+          if [ "$DEPLOY_PATH" == "null" ]; then
+            echo "❌ Project $PROJECT_NAME not found in .deploy-config.yml"
+            exit 1
+          fi
 
-            if [[ -n "${deployment_paths[$project_name]}" && -n "$csproj_path" ]]; then
-              echo "▶️ Building $csproj_path..."
-              dotnet publish "$csproj_path" -c Release -o out
+          csproj_path=$(find "$PROJECT_NAME" -name '*.csproj' | head -n 1)
+          if [ -z "$csproj_path" ]; then
+            echo "❌ No .csproj found in $PROJECT_NAME"
+            exit 1
+          fi
 
-              DEPLOY_PATH="${deployment_paths[$project_name]}"
-              echo "🚀 Deploying $project_name to $DEPLOY_PATH"
-              mkdir -p "$DEPLOY_PATH"
-              cp -r "$project_path/out/"* "$DEPLOY_PATH"
-            else
-              echo "⚠️ Skipping $project_path (no csproj or deploy path found)"
-            fi
-          done
+          echo "▶️ Building $csproj_path..."
+          dotnet publish "$csproj_path" -c Release -o out
+
+          echo "🚀 Deploying to $DEPLOY_PATH"
+          mkdir -p "$DEPLOY_PATH"
+          cp -r "$PROJECT_NAME/out/"* "$DEPLOY_PATH"
