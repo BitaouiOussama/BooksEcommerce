@@ -15,11 +15,13 @@ jobs:
 
       - name: Extract project name from PR body
         id: extract_project
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           echo "PR body:"
-          echo "${{ github.event.pull_request.body }}"
+          echo "$PR_BODY"
 
-          PROJECT=$(echo "${{ github.event.pull_request.body }}" | grep -oP '(?<=project:\s*)\S+' || echo "")
+          PROJECT=$(echo "$PR_BODY" | grep -oP '(?<=project:\s*)\S+' || echo "")
 
           if [ -z "$PROJECT" ]; then
             echo "No project specified in PR body, using default BookEcommerce.Web"
@@ -32,13 +34,10 @@ jobs:
       - name: Build and deploy chosen project
         env:
           DOTNET_ROOT: /home/obitaoui/dotnet
+          PATH: /home/obitaoui/dotnet:${PATH}
           PROJECT: ${{ steps.extract_project.outputs.project }}
         run: |
-          # Ajout de dotnet au PATH (en gardant le PATH actuel)
-          export PATH=/home/obitaoui/dotnet:$PATH
-
           echo "PATH is: $PATH"
-          # Vérification des commandes de base
           which mkdir || echo "mkdir command not found"
           which cp || echo "cp command not found"
           which dotnet || echo "dotnet command not found"
