@@ -1,25 +1,25 @@
-name: CI Pipeline
+# name: CI Pipeline
 
-# Trigger the pipeline on push for every branch
-on:
-  push:
-    branches:
-      - '**'  # Trigger on all branches
+# # Trigger the pipeline on push for every branch
+# on:
+#   push:
+#     branches:
+#       - '**'  # Trigger on all branches
 
-jobs:
-  build:
-    runs-on: self-hosted  # Your self-hosted runner
+# jobs:
+#   build:
+#     runs-on: self-hosted  # Your self-hosted runner
 
-    steps:
+#     steps:
 
-      # Print the branch name
-      - name: Set branch name environment variable
-        run: |
-          BRANCH_NAME=$(echo "${{ github.ref }}" | sed 's|refs/heads/||')
-          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
-          echo "Branch name stored: $BRANCH_NAME"
+#       # Print the branch name
+#       - name: Set branch name environment variable
+#         run: |
+#           BRANCH_NAME=$(echo "${{ github.ref }}" | sed 's|refs/heads/||')
+#           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+#           echo "Branch name stored: $BRANCH_NAME"
 
-      # Trigger Jenkins job with branch name as parameter, skipping SSL verification
-      - name: Trigger Jenkins Job
-        run: |
-          curl -k -X POST --user jenkuser:11731f1c43a8bf67ed718416d9552b2a9d  'https://jenkins.marjane.ma/job/template1/job/Qualite/buildWithParameters?Branch=${{ env.BRANCH_NAME }}'
+#       # Trigger Jenkins job with branch name as parameter, skipping SSL verification
+#       - name: Trigger Jenkins Job
+#         run: |
+#           curl -k -X POST --user jenkuser:11731f1c43a8bf67ed718416d9552b2a9d  'https://jenkins.marjane.ma/job/template1/job/Qualite/buildWithParameters?Branch=${{ env.BRANCH_NAME }}'
