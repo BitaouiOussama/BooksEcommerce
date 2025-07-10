@@ -1,63 +1,77 @@
-name: Build & Deploy
+name: Build and Deploy Modified Projects
 
 on:
   pull_request:
-    branches: [ master ]
+    branches:
+      - master
 
 jobs:
-  selective-deploy:
-    runs-on: [self-hosted, Linux, X64]
+  build-and-deploy:
+    runs-on: self-hosted
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Install yq (YAML parser)
-      run: sudo snap install yq
+      - name: Fetch master branch for comparison
+        run: |
+          git fetch origin master
 
-    - name: Get list of modified folders
-      id: changes
-      run: |
-        echo "changed_projects=" >> $GITHUB_ENV
+      - name: Set up .NET 6 SDK
+        run: |
+          export DOTNET_ROOT=$HOME/dotnet
+          export PATH=$DOTNET_ROOT:$PATH
+          mkdir -p "$DOTNET_ROOT"
+          wget https://download.visualstudio.microsoft.com/download/pr/e99cfe85-0e65-4c9b-b570-325764bde840/f2f02b720949c1f289443d2dcd15a7d0/dotnet-sdk-6.0.428-linux-x64.tar.gz -O dotnet-sdk.tar.gz
+          tar -zxf dotnet-sdk.tar.gz -C "$DOTNET_ROOT"
+          dotnet --version
 
-        # Get list of modified top-level folders (projects)
-        MODIFIED=$(git diff --name-only origin/master...HEAD | cut -d/ -f1-2 | sort -u)
+      - name: Read deployment paths
+        id: read-config
+        run: |
+          echo "Reading deployment config..."
+          DEPLOYMENTS=$(yq '.deployments' .deploy-config.yml | yq 'keys | .[]')
+          echo "projects=$DEPLOYMENTS" >> $GITHUB_OUTPUT
 
-        echo "Modified paths:"
-        echo "$MODIFIED"
+      - name: Get list of modified projects
+        id: get-modified
+        run: |
+          echo "Detecting modified folders..."
+          MODIFIED=$(git diff --name-only origin/master...HEAD | cut -d/ -f1-2 | sort -u)
+          echo "MODIFIED=$MODIFIED"
+          echo "changed_projects=$MODIFIED" >> $GITHUB_OUTPUT
 
-        echo "changed_projects<<EOF" >> $GITHUB_ENV
-        echo "$MODIFIED" >> $GITHUB_ENV
-        echo "EOF" >> $GITHUB_ENV
+      - name: Build and Deploy Modified Projects
+        run: |
+          #!/bin/bash
+          set -e
 
-    - name: Build & Deploy only changed projects
-      run: |
-        CONFIG=".deploy-config.yml"
-        echo "Chargement de la configuration de déploiement..."
+          export DOTNET_ROOT=$HOME/dotnet
+          export PATH=$DOTNET_ROOT:$PATH
 
-        for PROJECT in $(yq e '.deployments | keys | .[]' $CONFIG); do
-          echo "Vérification du projet : $PROJECT"
-          
-          if echo "$changed_projects" | grep -q "$PROJECT"; then
-            echo "Projet modifié : $PROJECT"
+          echo "Parsing config file..."
+          declare -A deployment_paths
+          while IFS=":" read -r project path; do
+            project=$(echo $project | xargs)
+            path=$(echo $path | xargs)
+            deployment_paths["$project"]="$path"
+          done < <(yq -o t '.' .deploy-config.yml | grep path)
 
-            CSPROJ=$(find "$PROJECT" -maxdepth 1 -name '*.csproj' | head -n 1)
-            if [ -z "$CSPROJ" ]; then
-              echo "Aucun .csproj trouvé dans $PROJECT"
-              exit 1
+          echo "Modified folders: ${{ steps.get-modified.outputs.changed_projects }}"
+
+          for project_path in ${{ steps.get-modified.outputs.changed_projects }}; do
+            project_name=$(basename "$project_path")
+            csproj_path=$(find "$project_path" -name '*.csproj' | head -n 1)
+
+            if [[ -n "${deployment_paths[$project_name]}" && -n "$csproj_path" ]]; then
+              echo "▶️ Building $csproj_path..."
+              dotnet publish "$csproj_path" -c Release -o out
+
+              DEPLOY_PATH="${deployment_paths[$project_name]}"
+              echo "🚀 Deploying $project_name to $DEPLOY_PATH"
+              mkdir -p "$DEPLOY_PATH"
+              cp -r "$project_path/out/"* "$DEPLOY_PATH"
+            else
+              echo "⚠️ Skipping $project_path (no csproj or deploy path found)"
             fi
-
-            echo "Build de $CSPROJ..."
-            dotnet build "$CSPROJ" -c Release
-
-            TARGET_PATH=$(yq e ".deployments.\"$PROJECT\".path" $CONFIG)
-            mkdir -p "$TARGET_PATH"
-
-            echo "Déploiement vers $TARGET_PATH..."
-            cp -r "$PROJECT/bin/Release/net6.0/"* "$TARGET_PATH"
-
-            echo "$PROJECT déployé avec succès à $TARGET_PATH"
-          else
-            echo "⏭Aucun changement détecté pour $PROJECT"
-          fi
-        done
+          done
