@@ -29,7 +29,6 @@ jobs:
           echo "PR body:"
           echo "${{ github.event.pull_request.body }}"
 
-          # Recherche dans la description PR un motif du genre: project: BookEcommerce.Web
           PROJECT=$(echo "${{ github.event.pull_request.body }}" | grep -oP '(?<=project:\s*)\S+' || echo "")
 
           if [ -z "$PROJECT" ]; then
@@ -46,8 +45,9 @@ jobs:
           PATH: ${{ env.HOME }}/dotnet:${{ env.PATH }}
           PROJECT: ${{ steps.extract_project.outputs.project }}
         run: |
-          export DOTNET_ROOT=$HOME/dotnet
-          export PATH=$DOTNET_ROOT:$PATH
+          echo "PATH is: $PATH"
+          which mkdir || echo "mkdir command not found"
+          which cp || echo "cp command not found"
 
           echo "Building project: $PROJECT"
 
