@@ -13,23 +13,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install .NET SDK 6.0
-        run: |
-          export DOTNET_ROOT=$HOME/dotnet
-          export PATH=$DOTNET_ROOT:$PATH
-          mkdir -p "$DOTNET_ROOT"
-          wget https://dotnetcli.azureedge.net/dotnet/Sdk/6.0.428/dotnet-sdk-6.0.428-linux-x64.tar.gz -O dotnet-sdk.tar.gz
-          tar -zxf dotnet-sdk.tar.gz -C "$DOTNET_ROOT"
-          dotnet --version
-        shell: bash
-
       - name: Extract project name from PR body
         id: extract_project
         run: |
           echo "PR body:"
           echo "${{ github.event.pull_request.body }}"
 
-          # Recherche dans la description PR un motif du genre: project: BookEcommerce.Web
           PROJECT=$(echo "${{ github.event.pull_request.body }}" | grep -oP '(?<=project:\s*)\S+' || echo "")
 
           if [ -z "$PROJECT" ]; then
@@ -43,15 +32,18 @@ jobs:
       - name: Build and deploy chosen project
         env:
           DOTNET_ROOT: /home/obitaoui/dotnet
-          PATH: /home/obitaoui/dotnet:$PATH
           PROJECT: ${{ steps.extract_project.outputs.project }}
         run: |
+          # Ajout de dotnet au PATH (en gardant le PATH actuel)
+          export PATH=/home/obitaoui/dotnet:$PATH
+
           echo "PATH is: $PATH"
+          # Vérification des commandes de base
           which mkdir || echo "mkdir command not found"
           which cp || echo "cp command not found"
+          which dotnet || echo "dotnet command not found"
 
           echo "Building project: $PROJECT"
-
           dotnet build "$PROJECT" || exit 1
 
           DEPLOY_PATH="/mnt/c/MigrationGithubActions/$PROJECT"
@@ -59,26 +51,3 @@ jobs:
           mkdir -p "$DEPLOY_PATH"
           cp -r "$PROJECT"/* "$DEPLOY_PATH"/
         shell: bash
-
-      # - name: Build and deploy chosen project
-      #   env:
-      #     DOTNET_ROOT: ${{ env.HOME }}/dotnet
-      #     PROJECT: ${{ steps.extract_project.outputs.project }}
-      #   run: |
-      #     # Important : on ajoute dotnet au PATH *en préservant* les chemins systèmes
-      #     export PATH="$DOTNET_ROOT:$PATH"
-
-      #     echo "PATH is: $PATH"
-      #     which mkdir || echo "mkdir command not found"
-      #     which cp || echo "cp command not found"
-      #     which dotnet || echo "dotnet command not found"
-
-      #     echo "Building project: $PROJECT"
-
-      #     dotnet build "$PROJECT" || exit 1
-
-      #     DEPLOY_PATH="/mnt/c/MigrationGithubActions/$PROJECT"
-      #     echo "Deploying to $DEPLOY_PATH"
-      #     mkdir -p "$DEPLOY_PATH"
-      #     cp -r "$PROJECT"/* "$DEPLOY_PATH"/
-      #   shell: bash
