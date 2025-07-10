@@ -42,16 +42,13 @@ jobs:
 
       - name: Build and deploy chosen project
         env:
-          DOTNET_ROOT: ${{ env.HOME }}/dotnet
+          DOTNET_ROOT: /home/obitaoui/dotnet
+          PATH: /home/obitaoui/dotnet:$PATH
           PROJECT: ${{ steps.extract_project.outputs.project }}
         run: |
-          # Important : on ajoute dotnet au PATH *en préservant* les chemins systèmes
-          export PATH="$DOTNET_ROOT:$PATH"
-
           echo "PATH is: $PATH"
           which mkdir || echo "mkdir command not found"
           which cp || echo "cp command not found"
-          which dotnet || echo "dotnet command not found"
 
           echo "Building project: $PROJECT"
 
@@ -62,3 +59,26 @@ jobs:
           mkdir -p "$DEPLOY_PATH"
           cp -r "$PROJECT"/* "$DEPLOY_PATH"/
         shell: bash
+
+      # - name: Build and deploy chosen project
+      #   env:
+      #     DOTNET_ROOT: ${{ env.HOME }}/dotnet
+      #     PROJECT: ${{ steps.extract_project.outputs.project }}
+      #   run: |
+      #     # Important : on ajoute dotnet au PATH *en préservant* les chemins systèmes
+      #     export PATH="$DOTNET_ROOT:$PATH"
+
+      #     echo "PATH is: $PATH"
+      #     which mkdir || echo "mkdir command not found"
+      #     which cp || echo "cp command not found"
+      #     which dotnet || echo "dotnet command not found"
+
+      #     echo "Building project: $PROJECT"
+
+      #     dotnet build "$PROJECT" || exit 1
+
+      #     DEPLOY_PATH="/mnt/c/MigrationGithubActions/$PROJECT"
+      #     echo "Deploying to $DEPLOY_PATH"
+      #     mkdir -p "$DEPLOY_PATH"
+      #     cp -r "$PROJECT"/* "$DEPLOY_PATH"/
+      #   shell: bash
