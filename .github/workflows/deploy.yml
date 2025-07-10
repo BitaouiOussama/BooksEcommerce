@@ -1,4 +1,4 @@
-name: Build and Deploy on PR to Master
+name: Build and Deploy .NET Project from PR description
 
 on:
   pull_request:
@@ -6,14 +6,14 @@ on:
       - master
 
 jobs:
-  build-and-deploy:
+  build-deploy:
     runs-on: self-hosted
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Setup .NET SDK
+      - name: Install .NET SDK 6.0
         run: |
           export DOTNET_ROOT=$HOME/dotnet
           export PATH=$DOTNET_ROOT:$PATH
@@ -21,54 +21,40 @@ jobs:
           wget https://dotnetcli.azureedge.net/dotnet/Sdk/6.0.428/dotnet-sdk-6.0.428-linux-x64.tar.gz -O dotnet-sdk.tar.gz
           tar -zxf dotnet-sdk.tar.gz -C "$DOTNET_ROOT"
           dotnet --version
+        shell: bash
 
-      - name: Read deployment config
-        id: read-config
+      - name: Extract project name from PR body
+        id: extract_project
         run: |
-          echo "Reading deployment config..."
-          DEPLOYMENTS=$(yq '.deployments' .deploy-config.yml | yq 'keys | join(",")')
-          echo "available=$DEPLOYMENTS" >> "$GITHUB_OUTPUT"
+          echo "PR body:"
+          echo "${{ github.event.pull_request.body }}"
 
-      - name: Extract chosen project from PR body
-        id: pr-content
-        run: |
-          BODY="${{ github.event.pull_request.body }}"
-          echo "PR Body: $BODY"
-          CHOSEN_PROJECT=$(echo "$BODY" | sed -n 's/^project:[[:space:]]*//p')
-          echo "chosen=$CHOSEN_PROJECT" >> "$GITHUB_OUTPUT"
+          # Recherche dans la description PR un motif du genre: project: BookEcommerce.Web
+          PROJECT=$(echo "${{ github.event.pull_request.body }}" | grep -oP '(?<=project:\s*)\S+' || echo "")
 
-      - name: Validate project choice
-        run: |
-          echo "Validating project: ${{ steps.pr-content.outputs.chosen }}"
-          VALID=false
-          for proj in $(echo "${{ steps.read-config.outputs.available }}" | tr ',' '\n'); do
-            if [[ "$proj" == "${{ steps.pr-content.outputs.chosen }}" ]]; then
-              VALID=true
-              break
-            fi
-          done
-
-          if [[ "$VALID" == false ]]; then
-            echo "❌ Invalid project: '${{ steps.pr-content.outputs.chosen }}'"
-            echo "Available projects: ${{ steps.read-config.outputs.available }}"
-            exit 1
+          if [ -z "$PROJECT" ]; then
+            echo "No project specified in PR body, using default BookEcommerce.Web"
+            PROJECT="BookEcommerce.Web"
           fi
 
-      - name: Build and deploy project
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Build and deploy chosen project
+        env:
+          DOTNET_ROOT: ${{ env.HOME }}/dotnet
+          PATH: ${{ env.HOME }}/dotnet:${{ env.PATH }}
+          PROJECT: ${{ steps.extract_project.outputs.project }}
         run: |
-          PROJECT="${{ steps.pr-content.outputs.chosen }}"
-          echo "Building and deploying project: $PROJECT"
+          export DOTNET_ROOT=$HOME/dotnet
+          export PATH=$DOTNET_ROOT:$PATH
 
-          # Lire le chemin du projet depuis le fichier yml
-          PROJECT_PATH=$(yq ".deployments.\"$PROJECT\".path" .deploy-config.yml)
-          echo "Resolved path: $PROJECT_PATH"
+          echo "Building project: $PROJECT"
 
-          # Crée le dossier s’il n’existe pas (optionnel)
-          mkdir -p "$PROJECT_PATH"
+          dotnet build "$PROJECT" || exit 1
 
-          # Build
-          dotnet build "$PROJECT"
-
-          # Simuler le "déploiement" en copiant vers le dossier Windows (via WSL mount)
-          echo "Deploying to: $PROJECT_PATH"
-          cp -r "$PROJECT"/* "$PROJECT_PATH"/
+          DEPLOY_PATH="/mnt/c/MigrationGithubActions/$PROJECT"
+          echo "Deploying to $DEPLOY_PATH"
+          mkdir -p "$DEPLOY_PATH"
+          cp -r "$PROJECT"/* "$DEPLOY_PATH"/
+        shell: bash
