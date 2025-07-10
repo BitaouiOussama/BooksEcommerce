@@ -81,10 +81,10 @@ jobs:
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
         shell: bash
 
-      - name: Install yq
-        run: |
-          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          chmod +x /usr/bin/yq
+      # - name: Install yq
+      #   run: |
+      #     sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+      #     sudochmod +x /usr/bin/yq
 
       - name: Get deployment path from deployments.yml
         id: get_deploy_path
