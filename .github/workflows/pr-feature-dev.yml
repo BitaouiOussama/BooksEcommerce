@@ -1,0 +1,20 @@
+name: "Enforce PR source branch for dev"
+
+on:
+  pull_request:
+    branches: [ dev ]
+
+jobs:
+  enforce-feature-only:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check source branch
+        run: |
+          if [[ "${{ github.head_ref }}" != "feature" ]]; then
+            echo "Only PRs from 'feature' branch to 'dev' are allowed."
+            gh pr close "$PR_URL" --comment "Only PRs from 'feature' branch to 'dev' are allowed."
+            exit 1
+          fi
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        # You need to add a GITHUB_TOKEN with write permission for this to auto-close PRs
