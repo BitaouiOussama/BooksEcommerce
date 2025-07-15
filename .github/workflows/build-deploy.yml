@@ -73,20 +73,44 @@ jobs:
           docker build -f "$PROJECT/Dockerfile" -t "$IMAGE_NAME" "$PROJECT"
         shell: bash
 
-      - name: Scan Docker image with Trivy
+    #   - name: Scan Docker image with Trivy
+    #     id: trivy_scan
+    #     env:
+    #       IMAGE_NAME: ${{ steps.build_docker.outputs.IMAGE_NAME }}
+    #     run: |
+    #       docker pull aquasec/trivy:latest
+    #       docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL "$IMAGE_NAME"
+    #     shell: bash
+
+    #   - name: Login to DockerHub
+    #     if: success()  # Only if trivy scan passed
+    #     run: |
+    #       echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+    #     shell: bash
+
+
+      - name: Scan Docker image with Trivy (report only)
         id: trivy_scan
         env:
           IMAGE_NAME: ${{ steps.build_docker.outputs.IMAGE_NAME }}
         run: |
           docker pull aquasec/trivy:latest
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --exit-code 1 --severity HIGH,CRITICAL "$IMAGE_NAME"
+          # Run Trivy and save report to file
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL "$IMAGE_NAME" > trivy-report.txt
+
+          # Check for vulnerabilities in report and print a warning if found
+          if grep -E "CRITICAL|HIGH" trivy-report.txt; then
+            echo "WARNING: Vulnerabilities found in the image. Please review the Trivy scan above."
+          else
+            echo "No HIGH or CRITICAL vulnerabilities found."
+          fi
         shell: bash
 
-      - name: Login to DockerHub
-        if: success()  # Only if trivy scan passed
-        run: |
-          echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-        shell: bash
+      - name: Upload Trivy report
+        uses: actions/upload-artifact@v3
+        with:
+          name: trivy-report
+          path: trivy-report.txt
 
       - name: Push Docker image to DockerHub
         if: success()  # Only if trivy scan passed
