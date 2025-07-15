@@ -3,7 +3,7 @@ name: Build and Deploy .NET Project from PR description
 on:
   pull_request:
     branches:
-      - master
+      - recette
 
 jobs:
   build-deploy:
