@@ -68,7 +68,7 @@ jobs:
           PROJECT: ${{ steps.extract_project.outputs.project }}
         run: |
           PROJECT_LOWER=$(echo "$PROJECT" | tr '[:upper:]' '[:lower:]')
-          IMAGE_NAME="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${PROJECT_LOWER}:pr-${{ github.event.pull_request.number }}"
+          IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/${PROJECT_LOWER}:pr-${{ github.event.pull_request.number }}"
           echo "IMAGE_NAME=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
           docker build -f "$PROJECT/Dockerfile" -t "$IMAGE_NAME" "$PROJECT"
         shell: bash
@@ -112,8 +112,14 @@ jobs:
           name: trivy-report
           path: trivy-report.txt
 
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Push Docker image to DockerHub
-        if: success()  # Only if trivy scan passed
+        if: success()
         env:
           IMAGE_NAME: ${{ steps.build_docker.outputs.IMAGE_NAME }}
         run: |
