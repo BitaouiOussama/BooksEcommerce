@@ -10,7 +10,7 @@ COPY BooksEcommerce.Services.UserAPI/*.csproj ./BooksEcommerce.Services.UserAPI/
 RUN dotnet restore
 
 # Copy the remaining source code for UserAPI
-COPY BooksEcommerce.Services.UserAPI/. ./BooksEcommerce.Services.UserAPI/
+COPY . .
 
 # Build and publish the UserAPI project
 RUN dotnet publish BooksEcommerce.Services.UserAPI/BooksEcommerce.Services.UserAPI.csproj -c Release -o out
