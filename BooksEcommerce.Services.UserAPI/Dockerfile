@@ -13,7 +13,7 @@ RUN dotnet restore
 COPY . .
 
 # Build and publish the UserAPI project
-RUN dotnet publish BooksEcommerce.Services.UserAPI/BooksEcommerce.Services.UserAPI.csproj -c Release -o out
+RUN dotnet publish BooksEcommerce.Services.UserAPI.csproj -c Release -o out
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:6.0 AS runtime
