@@ -1,0 +1,74 @@
+name: "CodeQL"
+
+on:
+#   push:
+#     branches: [ master ]
+  pull_request:
+    branches: [ master ]
+#   schedule:
+#     - cron: '0 5 * * 1' # every Monday at 05:00 UTC
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'csharp', 'github-actions' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Extract project name from PR body (for C# custom build)
+      - name: Extract project name from PR body
+        id: extract_project
+        if: matrix.language == 'csharp' && github.event_name == 'pull_request'
+        run: |
+          echo "PR body:"
+          echo "${{ github.event.pull_request.body }}"
+
+          PROJECT_LINE=$(echo "${{ github.event.pull_request.body }}" | grep -i '^project:' || echo "")
+          PROJECT=$(echo "$PROJECT_LINE" | awk -F ':' '{print $2}' | xargs)
+
+          if [ -z "$PROJECT" ]; then
+            echo "No project specified in PR body. Using default: BookEcommerce.Web"
+            PROJECT="BookEcommerce.Web"
+          fi
+
+          echo "Extracted project: $PROJECT"
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      # Autobuild for C#
+      - name: Autobuild
+        if: matrix.language == 'csharp'
+        uses: github/codeql-action/autobuild@v3
+
+      # Custom build if autobuild fails or for more control
+      - name: Build with dotnet (custom build)
+        if: matrix.language == 'csharp' && failure() && github.event_name == 'pull_request'
+        run: |
+          dotnet build ${{ steps.extract_project.outputs.project }}
+        shell: bash
+
+      - name: Build with dotnet (custom build for push/schedule)
+        if: matrix.language == 'csharp' && failure() && github.event_name != 'pull_request'
+        run: |
+          dotnet build BookEcommerce.Web
+        shell: bash
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
