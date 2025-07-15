@@ -2,16 +2,18 @@
 FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
 WORKDIR /app
 
-# Copy csproj and restore dependencies
+# Copy the solution and the UserAPI project files
 COPY *.sln .
-COPY BookEcommerce.Web/*.csproj ./BookEcommerce.Web/
+COPY *.csproj .
+
+# Restore dependencies
 RUN dotnet restore
 
-# Copy the remaining source code
+# Copy the remaining source code for UserAPI
 COPY . .
 
-# Build and publish the app
-RUN dotnet publish BookEcommerce.Web/BookEcommerce.Web.csproj -c Release -o out
+# Build and publish the UserAPI project
+RUN dotnet publish BookEcommerce.Web.csproj -c Release -o out
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:6.0 AS runtime
@@ -24,5 +26,5 @@ ENV ASPNETCORE_URLS=http://+:80
 # Expose port 80
 EXPOSE 80
 
-# Start the application
+# Start the UserAPI application
 ENTRYPOINT ["dotnet", "BookEcommerce.Web.dll"]
