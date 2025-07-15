@@ -1,12 +1,8 @@
 name: "CodeQL"
 
 on:
-#   push:
-#     branches: [ master ]
   pull_request:
     branches: [ master ]
-#   schedule:
-#     - cron: '0 5 * * 1' # every Monday at 05:00 UTC
 
 jobs:
   analyze:
@@ -21,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'csharp', 'github-actions' ]
+        language: [ 'csharp' ]
 
     steps:
       - name: Checkout repository
@@ -71,4 +67,13 @@ jobs:
         shell: bash
 
       - name: Perform CodeQL Analysis
+        id: codeql_analyze
         uses: github/codeql-action/analyze@v3
+        with:
+          output: results/codeql.sarif
+
+      - name: Upload CodeQL SARIF report
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-report
+          path: results/codeql.sarif
