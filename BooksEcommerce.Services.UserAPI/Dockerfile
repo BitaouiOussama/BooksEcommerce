@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Copy the solution and the UserAPI project files
 COPY *.sln .
-COPY BooksEcommerce.Services.UserAPI/*.csproj ./BooksEcommerce.Services.UserAPI/
+COPY *.csproj .
 
 # Restore dependencies
 RUN dotnet restore
