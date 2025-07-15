@@ -51,6 +51,17 @@ jobs:
           echo "deploy_path=$DEPLOY_PATH" >> "$GITHUB_OUTPUT"
         shell: bash
 
+    #   - name: Build Docker image
+    #     id: build_docker
+    #     env:
+    #       PROJECT: ${{ steps.extract_project.outputs.project }}
+    #     run: |
+    #       PROJECT_LOWER=$(echo "$PROJECT" | tr '[:upper:]' '[:lower:]')
+    #       IMAGE_NAME="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${PROJECT_LOWER}:pr-${{ github.event.pull_request.number }}"
+    #       echo "IMAGE_NAME=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+    #       docker build -t "$IMAGE_NAME" "$PROJECT"
+    #     shell: bash
+
       - name: Build Docker image
         id: build_docker
         env:
@@ -59,7 +70,7 @@ jobs:
           PROJECT_LOWER=$(echo "$PROJECT" | tr '[:upper:]' '[:lower:]')
           IMAGE_NAME="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${PROJECT_LOWER}:pr-${{ github.event.pull_request.number }}"
           echo "IMAGE_NAME=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
-          docker build -t "$IMAGE_NAME" "$PROJECT"
+          docker build -f "$PROJECT/Dockerfile" -t "$IMAGE_NAME" "$PROJECT"
         shell: bash
 
       - name: Scan Docker image with Trivy
