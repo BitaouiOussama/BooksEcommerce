@@ -1,60 +1,9 @@
-# name: Build and Deploy .NET Project from PR description
-
-# on:
-#   pull_request:
-#     branches:
-#       - master
-
-# jobs:
-#   build-deploy:
-#     runs-on: [self-hosted, Linux, X64]
-
-#     steps:
-#       - name: Checkout repository
-#         uses: actions/checkout@v3
-
-#       - name: Extract project name from PR body
-#         id: extract_project
-#         run: |
-#           echo "PR body:"
-#           echo "${{ github.event.pull_request.body }}"
-
-#           PROJECT_LINE=$(echo "${{ github.event.pull_request.body }}" | grep -i '^project:' || echo "")
-#           PROJECT=$(echo "$PROJECT_LINE" | awk -F ':' '{print $2}' | xargs)
-
-#           if [ -z "$PROJECT" ]; then
-#             echo "No project specified in PR body. Using default: BookEcommerce.Web"
-#             PROJECT="BookEcommerce.Web"
-#           fi
-
-#           echo "Extracted project: $PROJECT"
-#           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
-#         shell: bash
-
-#       - name: Build and deploy chosen project
-#         env:
-#           DOTNET_ROOT: /home/obitaoui/dotnet
-#           PROJECT: ${{ steps.extract_project.outputs.project }}
-#         run: |
-#           export PATH=/home/obitaoui/dotnet:$PATH
-
-#           echo "Building project: $PROJECT"
-#           dotnet build "$PROJECT" || exit 1
-
-#           DEPLOY_PATH="/mnt/c/MigrationGithubActions/$PROJECT"
-#           echo "Deploying to $DEPLOY_PATH"
-#           mkdir -p "$DEPLOY_PATH"
-#           cp -r "$PROJECT"/* "$DEPLOY_PATH"/
-#         shell: bash
-
-
 name: Build and Deploy .NET Project from PR description
 
 on:
-  # pull_request:
-  #   branches:
-  #     - master
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - master
 
 jobs:
   build-deploy:
@@ -85,7 +34,7 @@ jobs:
       # - name: Install yq
       #   run: |
       #     sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-      #     sudochmod +x /usr/bin/yq
+      #     sudo chmod +x /usr/bin/yq
 
       - name: Get deployment path from deployments.yml
         id: get_deploy_path
@@ -102,7 +51,42 @@ jobs:
           echo "deploy_path=$DEPLOY_PATH" >> "$GITHUB_OUTPUT"
         shell: bash
 
+      - name: Build Docker image
+        id: build_docker
+        env:
+          PROJECT: ${{ steps.extract_project.outputs.project }}
+        run: |
+          IMAGE_NAME="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${PROJECT}:pr-${{ github.event.pull_request.number }}"
+          echo "IMAGE_NAME=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+          # Use the Dockerfile in the project directory
+          docker build -t "$IMAGE_NAME" "$PROJECT"
+        shell: bash
+
+      - name: Scan Docker image with Trivy
+        id: trivy_scan
+        env:
+          IMAGE_NAME: ${{ steps.build_docker.outputs.IMAGE_NAME }}
+        run: |
+          docker pull aquasec/trivy:latest
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --exit-code 1 --severity HIGH,CRITICAL "$IMAGE_NAME"
+        shell: bash
+
+      - name: Login to DockerHub
+        if: success()  # Only if trivy scan passed
+        run: |
+          echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+        shell: bash
+
+      - name: Push Docker image to DockerHub
+        if: success()  # Only if trivy scan passed
+        env:
+          IMAGE_NAME: ${{ steps.build_docker.outputs.IMAGE_NAME }}
+        run: |
+          docker push "$IMAGE_NAME"
+        shell: bash
+
       - name: Build and deploy chosen project
+        if: success()  # Only if trivy scan passed
         env:
           DOTNET_ROOT: /home/obitaoui/dotnet
           PROJECT: ${{ steps.extract_project.outputs.project }}
