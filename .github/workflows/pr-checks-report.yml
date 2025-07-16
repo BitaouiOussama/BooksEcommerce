@@ -16,7 +16,6 @@ jobs:
       contents: read
     steps:
       - name: Get all check results and report
-        id: get-checks
         uses: actions/github-script@v6
         with:
           script: |
@@ -28,13 +27,13 @@ jobs:
               let requiredCheckPatterns = [];
 
               // Determine required checks based on PR scenario
-              if (baseBranch === 'dev' && headBranch.startsWith('feature')) {
-                // feature -> dev
+              if (baseBranch === 'dev' && headBranch === 'feature') {
+                
                 requiredCheckPatterns = [
                   'Code scanning results / CodeQL',
-                  'CodeQL / Analyze (actions)',
-                  'CodeQL / Analyze (csharp)',
-                  'CodeQL / Analyze (javascript-typescript)',
+                  'CodeQL / Analyze (actions) (dynamic)',
+                  'CodeQL / Analyze (csharp) (dynamic)',
+                  'CodeQL / Analyze (javascript-typescript) (dynamic)',
                   'Enforce PR source branch for dev / enforce-feature-only (pull_request)'
                 ];
               } else if (baseBranch === 'recette' && headBranch === 'dev') {
@@ -72,9 +71,9 @@ jobs:
                 }))
               ];
 
-              // Filter checks that match any required pattern
+              // Filter checks that match any required pattern (EXACT match)
               const requiredChecks = allChecks.filter(check =>
-                requiredCheckPatterns.some(pattern => check.name === pattern)
+                requiredCheckPatterns.includes(check.name)
               );
 
               // Generate report
@@ -84,7 +83,9 @@ jobs:
               let message = `## PR Quality Report\n\n` +
                            `**From:** \`${headBranch}\` **To:** \`${baseBranch}\`\n\n` +
                            `### Required Checks (${requiredChecks.length}):\n` +
-                           requiredChecks.map(c => `- ${c.name} ${c.conclusion === 'success' ? '✅ Passed' : '❌ Failed'}`).join('\n') +
+                           (requiredChecks.length > 0
+                            ? requiredChecks.map(c => `- ${c.name} ${c.conclusion === 'success' ? '✅ Passed' : '❌ Failed'}`).join('\n')
+                            : "_No required checks found for this PR type._") +
                            `\n\n✅ Passed: ${passed.length}/${requiredChecks.length} checks\n` +
                            `${failed.length ? '❌ Some checks failed' : '🎉 All checks passed!'}`;
 
