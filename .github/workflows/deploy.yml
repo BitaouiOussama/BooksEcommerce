@@ -48,7 +48,7 @@
 #         shell: bash
 
 
-name: Build and Deploy .NET Project from PR description
+name: Build and Deploy
 
 on:
   # pull_request:
