@@ -1,0 +1,101 @@
+name: PR Quality Reporter
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - dev
+      - recette
+
+jobs:
+  report:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Get all check results and report
+        uses: actions/github-script@v6
+        with:
+            script: |
+                try {
+                    const pr = context.payload.pull_request;
+                    const baseBranch = pr.base.ref;
+                    const headBranch = pr.head.ref;
+
+                    let requiredCheckPatterns = [];
+
+                    // Determine required checks based on PR scenario
+                    if (baseBranch === 'dev' && headBranch === 'feature') {
+                    requiredCheckPatterns = [
+                        'Code scanning results / CodeQL',
+                        'CodeQL / Analyze',
+                        'Enforce PR source branch for dev'
+                    ];
+                    } else if (baseBranch === 'recette' && headBranch === 'dev') {
+                    requiredCheckPatterns = [
+                        'Build and Deploy Project from PR description / build-deploy'
+                    ];
+                    } else {
+                    // Not a tracked scenario, skip reporting
+                    return;
+                    }
+
+                    // Get all checks (both status checks and GitHub Actions)
+                    const { data: statusChecks } = await github.rest.repos.getCombinedStatusForRef({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ref: pr.head.sha
+                    });
+
+                    const { data: actionChecks } = await github.rest.checks.listForRef({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ref: pr.head.sha
+                    });
+
+                    // Combine all checks into a flat array
+                    const allChecks = [
+                    ...(statusChecks.statuses || []).map(s => ({
+                        name: s.context,
+                        conclusion: s.state === 'success' ? 'success' : 'failure'
+                    })),
+                    ...(actionChecks.check_runs || []).map(c => ({
+                        name: c.name,
+                        conclusion: c.conclusion
+                    }))
+                    ];
+
+                    // Optional: Debug log all checks
+                    console.log("All detected checks:");
+                    allChecks.forEach(c => console.log(`- ${c.name}: ${c.conclusion}`));
+
+                    // Match checks using partial pattern matching
+                    const requiredChecks = allChecks.filter(check =>
+                    requiredCheckPatterns.some(pattern => check.name.includes(pattern))
+                    );
+
+                    // Generate report
+                    const passed = requiredChecks.filter(c => c.conclusion === 'success');
+                    const failed = requiredChecks.filter(c => c.conclusion !== 'success');
+
+                    let message = `## PR Quality Report\n\n` +
+                                `**From:** \`${headBranch}\` **To:** \`${baseBranch}\`\n\n` +
+                                `### Required Checks (${requiredChecks.length}):\n` +
+                                (requiredChecks.length > 0
+                                    ? requiredChecks.map(c => `- ${c.name} ${c.conclusion === 'success' ? '✅ Passed' : '❌ Failed'}`).join('\n')
+                                    : "_No required checks matched for this PR type._") +
+                                `\n\n✅ Passed: ${passed.length}/${requiredChecks.length} checks\n` +
+                                `${failed.length ? '❌ Some checks failed' : '🎉 All checks passed!'}`;
+
+                    await github.rest.issues.createComment({
+                    issue_number: context.issue.number,
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    body: message
+                    });
+
+                } catch (error) {
+                    core.error('Reporting error: ' + error.message);
+                }
