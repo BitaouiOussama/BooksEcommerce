@@ -1,9 +1,10 @@
-name: Build and Deploy .NET Project from PR description
+name: Build and Deploy Project from PR description
 
 on:
   pull_request:
     branches:
       - recette
+  workflow_dispatch:
 
 jobs:
   build-deploy:
