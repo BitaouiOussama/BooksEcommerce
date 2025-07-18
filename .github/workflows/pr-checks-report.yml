@@ -18,45 +18,51 @@ jobs:
       - name: Get all check results and report
         uses: actions/github-script@v6
         with:
-            script: |
-                try {
-                    const pr = context.payload.pull_request;
-                    const baseBranch = pr.base.ref;
-                    const headBranch = pr.head.ref;
+          script: |
+            try {
+                const pr = context.payload.pull_request;
+                const baseBranch = pr.base.ref;
+                const headBranch = pr.head.ref;
 
-                    let requiredCheckPatterns = [];
+                console.log(`Base branch: ${baseBranch}, Head branch: ${headBranch}`);
 
-                    // Determine required checks based on PR scenario
-                    if (baseBranch === 'dev' && headBranch === 'feature') {
+                let requiredCheckPatterns = [];
+
+                // Determine required checks based on PR scenario
+                if (baseBranch === 'dev' && headBranch.startsWith('feature')) {
                     requiredCheckPatterns = [
                         'Code scanning results / CodeQL',
-                        'CodeQL / Analyze',
-                        'Enforce PR source branch for dev'
+                        'CodeQL / Analyze (actions)',
+                        'CodeQL / Analyze (csharp)',
+                        'CodeQL / Analyze (javascript-typescript)',
+                        'Enforce PR source branch for dev / enforce-feature-only'
                     ];
-                    } else if (baseBranch === 'recette' && headBranch === 'dev') {
+                } else if (baseBranch === 'recette' && headBranch === 'dev') {
                     requiredCheckPatterns = [
-                        'Build and Deploy Project from PR description / build-deploy'
+                        'Build and Deploy .NET Project from PR description / build-deploy'
                     ];
-                    } else {
-                    // Not a tracked scenario, skip reporting
+                } else {
+                    console.log("Not a tracked scenario, skipping reporting");
                     return;
-                    }
+                }
 
-                    // Get all checks (both status checks and GitHub Actions)
-                    const { data: statusChecks } = await github.rest.repos.getCombinedStatusForRef({
+                console.log("Required check patterns:", requiredCheckPatterns);
+
+                // Get all checks (both status checks and GitHub Actions)
+                const { data: statusChecks } = await github.rest.repos.getCombinedStatusForRef({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     ref: pr.head.sha
-                    });
+                });
 
-                    const { data: actionChecks } = await github.rest.checks.listForRef({
+                const { data: actionChecks } = await github.rest.checks.listForRef({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     ref: pr.head.sha
-                    });
+                });
 
-                    // Combine all checks into a flat array
-                    const allChecks = [
+                // Combine all checks into a flat array
+                const allChecks = [
                     ...(statusChecks.statuses || []).map(s => ({
                         name: s.context,
                         conclusion: s.state === 'success' ? 'success' : 'failure'
@@ -65,37 +71,39 @@ jobs:
                         name: c.name,
                         conclusion: c.conclusion
                     }))
-                    ];
+                ];
 
-                    // Optional: Debug log all checks
-                    console.log("All detected checks:");
-                    allChecks.forEach(c => console.log(`- ${c.name}: ${c.conclusion}`));
+                console.log("All detected checks:");
+                allChecks.forEach(c => console.log(`- ${c.name}: ${c.conclusion}`));
 
-                    // Match checks using partial pattern matching
-                    const requiredChecks = allChecks.filter(check =>
+                // Match checks using partial pattern matching
+                const requiredChecks = allChecks.filter(check =>
                     requiredCheckPatterns.some(pattern => check.name.includes(pattern))
-                    );
+                );
 
-                    // Generate report
-                    const passed = requiredChecks.filter(c => c.conclusion === 'success');
-                    const failed = requiredChecks.filter(c => c.conclusion !== 'success');
+                console.log("Matched required checks:", requiredChecks);
 
-                    let message = `## PR Quality Report\n\n` +
-                                `**From:** \`${headBranch}\` **To:** \`${baseBranch}\`\n\n` +
-                                `### Required Checks (${requiredChecks.length}):\n` +
-                                (requiredChecks.length > 0
-                                    ? requiredChecks.map(c => `- ${c.name} ${c.conclusion === 'success' ? '✅ Passed' : '❌ Failed'}`).join('\n')
-                                    : "_No required checks matched for this PR type._") +
-                                `\n\n✅ Passed: ${passed.length}/${requiredChecks.length} checks\n` +
-                                `${failed.length ? '❌ Some checks failed' : '🎉 All checks passed!'}`;
+                // Generate report
+                const passed = requiredChecks.filter(c => c.conclusion === 'success');
+                const failed = requiredChecks.filter(c => c.conclusion !== 'success');
 
-                    await github.rest.issues.createComment({
+                let message = `## PR Quality Report\n\n` +
+                            `**From:** \`${headBranch}\` **To:** \`${baseBranch}\`\n\n` +
+                            `### Required Checks (${requiredChecks.length}):\n` +
+                            (requiredChecks.length > 0
+                                ? requiredChecks.map(c => `- ${c.name} ${c.conclusion === 'success' ? '✅ Passed' : '❌ Failed'}`).join('\n')
+                                : "_No required checks matched for this PR type._") +
+                            `\n\n✅ Passed: ${passed.length}/${requiredChecks.length} checks\n` +
+                            `${failed.length ? '❌ Some checks failed' : '🎉 All checks passed!'}`;
+
+                await github.rest.issues.createComment({
                     issue_number: context.issue.number,
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     body: message
-                    });
+                });
 
-                } catch (error) {
-                    core.error('Reporting error: ' + error.message);
-                }
+            } catch (error) {
+                console.error('Reporting error: ' + error.message);
+                core.setFailed(error.message);
+            }
