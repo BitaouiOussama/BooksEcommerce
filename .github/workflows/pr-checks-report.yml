@@ -34,7 +34,9 @@ jobs:
                     scenario = 'feature-to-dev';
                     requiredCheckPatterns = [
                         'Code scanning results / CodeQL',
-                        'CodeQL / Analyze',
+                        'Analyze (actions)',
+                        'Analyze (csharp)',
+                        'Analyze (javascript-typescript)',
                         'Enforce PR source branch for dev'
                     ];
                 } else if (baseBranch === 'recette' && headBranch === 'dev') {
