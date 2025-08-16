@@ -24,31 +24,35 @@ jobs:
                 const baseBranch = pr.base.ref;
                 const headBranch = pr.head.ref;
 
-                console.log(`Base branch: ${baseBranch}, Head branch: ${headBranch}`);
+                console.log(`DEBUG: Base branch: '${baseBranch}', Head branch: '${headBranch}'`);
 
                 let requiredCheckPatterns = [];
+                let scenario = '';
 
                 // Determine required checks based on PR scenario
-                if (baseBranch === 'dev' && headBranch.startsWith('feature')) {
+                if (baseBranch === 'dev' && /feature/i.test(headBranch)) {
+                    scenario = 'feature-to-dev';
                     requiredCheckPatterns = [
                         'Code scanning results / CodeQL',
-                        'CodeQL / Analyze (actions)',
-                        'CodeQL / Analyze (csharp)',
-                        'CodeQL / Analyze (javascript-typescript)',
-                        'Enforce PR source branch for dev / enforce-feature-only'
+                        'Analyze (actions)',
+                        'Analyze (csharp)',
+                        'Analyze (javascript-typescript)',
+                        'Enforce PR source branch for dev'
                     ];
                 } else if (baseBranch === 'recette' && headBranch === 'dev') {
+                    scenario = 'dev-to-recette';
                     requiredCheckPatterns = [
                         'Build and Deploy .NET Project from PR description / build-deploy'
                     ];
                 } else {
-                    console.log("Not a tracked scenario, skipping reporting");
+                    console.log(`DEBUG: Unmatched scenario - Base: ${baseBranch}, Head: ${headBranch}`);
                     return;
                 }
 
-                console.log("Required check patterns:", requiredCheckPatterns);
+                console.log(`DEBUG: Scenario: ${scenario}`);
+                console.log(`DEBUG: Looking for checks matching: ${JSON.stringify(requiredCheckPatterns)}`);
 
-                // Get all checks (both status checks and GitHub Actions)
+                // Get all checks
                 const { data: statusChecks } = await github.rest.repos.getCombinedStatusForRef({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
@@ -61,27 +65,32 @@ jobs:
                     ref: pr.head.sha
                 });
 
-                // Combine all checks into a flat array
+                // Combine all checks
                 const allChecks = [
                     ...(statusChecks.statuses || []).map(s => ({
                         name: s.context,
-                        conclusion: s.state === 'success' ? 'success' : 'failure'
+                        conclusion: s.state === 'success' ? 'success' : 'failure',
+                        type: 'status'
                     })),
                     ...(actionChecks.check_runs || []).map(c => ({
                         name: c.name,
-                        conclusion: c.conclusion
+                        conclusion: c.conclusion,
+                        type: 'check_run'
                     }))
                 ];
 
-                console.log("All detected checks:");
-                allChecks.forEach(c => console.log(`- ${c.name}: ${c.conclusion}`));
+                console.log('DEBUG: All available checks:');
+                allChecks.forEach(c => console.log(`- ${c.type} ${c.name}: ${c.conclusion}`));
 
-                // Match checks using partial pattern matching
+                // Find matching checks (case insensitive, partial match)
                 const requiredChecks = allChecks.filter(check =>
-                    requiredCheckPatterns.some(pattern => check.name.includes(pattern))
+                    requiredCheckPatterns.some(pattern => 
+                        check.name.toLowerCase().includes(pattern.toLowerCase())
+                    )
                 );
 
-                console.log("Matched required checks:", requiredChecks);
+                console.log('DEBUG: Matched required checks:');
+                requiredChecks.forEach(c => console.log(`- ${c.name}`));
 
                 // Generate report
                 const passed = requiredChecks.filter(c => c.conclusion === 'success');
@@ -89,12 +98,19 @@ jobs:
 
                 let message = `## PR Quality Report\n\n` +
                             `**From:** \`${headBranch}\` **To:** \`${baseBranch}\`\n\n` +
-                            `### Required Checks (${requiredChecks.length}):\n` +
-                            (requiredChecks.length > 0
-                                ? requiredChecks.map(c => `- ${c.name} ${c.conclusion === 'success' ? '✅ Passed' : '❌ Failed'}`).join('\n')
-                                : "_No required checks matched for this PR type._") +
-                            `\n\n✅ Passed: ${passed.length}/${requiredChecks.length} checks\n` +
-                            `${failed.length ? '❌ Some checks failed' : '🎉 All checks passed!'}`;
+                            `### Required Checks (${requiredChecks.length}):\n`;
+
+                if (requiredChecks.length > 0) {
+                    message += requiredChecks.map(c => 
+                        `- ${c.name} ${c.conclusion === 'success' ? '✅ Passed' : '❌ Failed'}`
+                    ).join('\n');
+                } else {
+                    message += `_No checks matched for this PR type. Expected patterns:_\n` +
+                              requiredCheckPatterns.map(p => `- ${p}`).join('\n');
+                }
+
+                message += `\n\n✅ Passed: ${passed.length}/${requiredChecks.length} checks\n` +
+                          `${failed.length ? '❌ Some checks failed' : '🎉 All checks passed!'}`;
 
                 await github.rest.issues.createComment({
                     issue_number: context.issue.number,
@@ -104,6 +120,6 @@ jobs:
                 });
 
             } catch (error) {
-                console.error('Reporting error: ' + error.message);
+                console.error('ERROR:', error);
                 core.setFailed(error.message);
             }
